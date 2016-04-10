@@ -1,6 +1,7 @@
 /*==============================================================================
   test_serial_from_arduino_v10.pde
   Marc Miller,  April 2015
+  Modifications by Daniel Halsey, March 2016
 
   *** Note: You need to run this with the older Processing 2.2.1 ***
 ================================================================================
@@ -32,7 +33,7 @@ import processing.serial.*;
 //==============================================================================
 // *** User variables.  Change as needed to match your setup. ***
 int      NUM_LEDS = 12;     // Number of pixels in strip.
-String     layout = "H";    // Pixel layout: [H]orizontal, [V]ertical, [M]atrix, or [C]ircular.
+String     layout = "C";    // Pixel layout: [H]orizontal, [V]ertical, [M]atrix, or [C]ircular.
 String  direction = "F";    // Numbering direction: [F]orward or [R]everse.
 
 // *** Additional variables for Matrix layout only. ***
@@ -61,17 +62,20 @@ int receivedNUM_LEDS;          // Number of pixels sent to Processing from MCU. 
 int pixelCount = 0;            // Count our pixels.
 int pixelNumber = -1;          // Pixel number from serial data.  Initally -1 to act as trigger.
 boolean firstContact = false;  // Whether we've heard from the microcontroller.  Initially false.
-int stageMin = 140;            // Minimum stage size.
+int stageMin = 720;            // Minimum stage size.
 int stageW = stageMin;         // Initial stage width for draw area.
 int stageH = stageMin;         // Initial stage height for draw area.
-int pixelSize = 20;            // Width and height of a pixel.
-int offset = 30;               // Pixel spacing (measured from pixel center to center).
+int pixelSize = 50;            // Width and height of a pixel's LED.
+int borderSize = int(0.075*pixelSize);            // Width and height of a pixel border.
+int fullPixelSize = (pixelSize + (2 * borderSize));
+int offset = int(fullPixelSize * 1.5);               // Pixel spacing (measured from pixel center to center).
 float xpos, ypos;              // X and Y pixel position in the draw area.
 float dx,dy = 0;               // X and Y delta from the stage center in circular layouts.
 int cCount = 0;                // Used to keep track of column while drawing pixel matrix.
 int rCount = 0;                // Used to keep track of row while drawing pixel matrix.
-float r = 1;                   // Radius for circular layout.  Size is calculated elsewhere.
-float degrees = 0;             // Degrees to rotate pixel boarder when drawing circular layout.
+float radius;                  // Radius for circular layout.  Size is calculated elsewhere.
+float radiusScale = 1;         // Radius scaling factor. Used to increase radius for circular layout.
+float degrees = 0;             // Degrees to rotate pixel border when drawing circular layout.
 int dir = 1;                   // Assigns draw direction a value.  [1=Forward, -1=Reverse]
 int dirM = 1;                  // Assigns value to matrix scan start position.  [1=Top, -1=Bottom]
 int bgcolor = 42;              // Stage background color.
@@ -140,32 +144,32 @@ void setup() {
 
 //------------------------------------------------------------------------------
 void draw() {
-  // Inital draw of pixel boarders (the white part) and "off" (dark) pixels.
+  // Inital draw of pixel borders (the white part) and "off" (dark) pixels.
   // This first conditional check will only be true once, thus the pixel
-  // boarders are only drawn one time at start and not over and over again.
+  // borders are only drawn one time at start and not over and over again.
   if (pixelNumber == 0 && firstContact == false){
 
-    int boarderColor = 255;  // Pixel board color for first pixel.
+    int borderColor = 255;  // Pixel board color for first pixel.
     if (layout == "C") {  // Draw circular layout.
       degrees = 0;  // Angle to rotate pixel while drawing around the circular layout.
-      r = NUM_LEDS * 5;  // Seems like a good ratio for scaling cirlce size based on number of pixels.
+      radius = (NUM_LEDS * ((pixelSize * 1.5)/TWO_PI) * radiusScale) - borderSize;  // Seems like a good ratio for scaling cirlce size based on number of pixels.
       translate(stageW/2, stageH/2);  // Temporarily move grid 0,0 to center of stage draw area.
       for (int i=0; i<NUM_LEDS; i++){
-        dx = r * cos(radians(degrees));
-        dy = dir * r * sin(radians(degrees));
+        dx = radius * cos(radians(degrees));
+        dy = dir * radius * sin(radians(degrees));
         translate(dx,dy);  // Move to where we want to draw our pixel, relative from stage center.
         pushMatrix();  // "Push" so we can rotate the drawing grid.
         rotate(radians(dir * degrees));  // Rotate the pixel.
         colorMode(HSB, 255);  // Specify color mode, using range from 0-255.
-        fill(0,0,boarderColor);  // HSB mode.  This is the outer boarder part of pixel.
-        rect(0,0,pixelSize+3,pixelSize+3,3);  // center x, center y, width, height, corner radius
+        fill(0,0,borderColor);  // HSB mode.  This is the outer border part of pixel.
+        rect(0,0, fullPixelSize, fullPixelSize, borderSize);  // center x, center y, width, height, corner radius
         fill(0,0,25);  // HSB mode.  This initally fills each pixel black (ie. pixel is "off").
         ellipse(0,0,pixelSize,pixelSize);  // center x, center y, width, height
         popMatrix();  // "Pop" drawing grid back to normal.
         translate(-1*dx,-1*dy);  // Move back to stage center.
         degrees = degrees - (360.0 / NUM_LEDS);  // Advance around circle. Minus gives counter clockwise.
-        boarderColor -= 10;  // Darken pixel boarder color
-        if (boarderColor < 200) {boarderColor = 180;}  // Clamp minimum boarder color
+        borderColor -= 10;  // Darken pixel border color
+        if (borderColor < 200) {borderColor = 180;}  // Clamp minimum border color
       }
     }//end cicular layout
 
@@ -180,12 +184,12 @@ void draw() {
           ypos = (stageH/2) - (dir*((NUM_LEDS-1) * offset)/2) + (i * offset * dir);
         }
         colorMode(HSB, 255);  // Specify color mode, using range from 0-255.
-        fill(0,0,boarderColor);  // HSB mode = White part of pixel
-        rect(xpos,ypos,pixelSize+3,pixelSize+3,3);  // center x, center y, width, height, corner radius
+        fill(0,0,borderColor);  // HSB mode = White part of pixel
+        rect(xpos,ypos,fullPixelSize,fullPixelSize,borderSize);  // center x, center y, width, height, corner radius
         fill(0,255,25);  // HSB mode
         ellipse(xpos,ypos,pixelSize,pixelSize);  // center x, center y, width, height
-        boarderColor -= 10;  // Darken pixel boarder color
-        if (boarderColor < 200) {boarderColor = 180;}  // Clamp minimum boarder color
+        borderColor -= 10;  // Darken pixel border color
+        if (borderColor < 200) {borderColor = 180;}  // Clamp minimum border color
       }
     }//end horizontal and vertical layout
 
@@ -200,12 +204,12 @@ void draw() {
           //println("    xpos: " + xpos + "    ypos: " + ypos);
           if ((i+1+(j*numberColumns)) <= NUM_LEDS) {  // If matrix is larger then NUM_LEDS, only draw actual pixels.
             colorMode(HSB, 255);  // Specify color mode, using range from 0-255.
-            fill(0,0,boarderColor);  // HSB mode = White part of pixel
-            rect(xpos,ypos,pixelSize+3,pixelSize+3,3);  // center x, center y, width, height, corner radius
+            fill(0,0,borderColor);  // HSB mode = White part of pixel
+            rect(xpos,ypos,fullPixelSize,fullPixelSize,borderSize);  // center x, center y, width, height, corner radius
             fill(0,255,25);  // HSB mode
             ellipse(xpos,ypos,pixelSize,pixelSize);  // center x, center y, width, height
-            boarderColor -= 10;  // Darken pixel boarder color
-            if (boarderColor < 200) {boarderColor = 180;}  // Clamp minimum boarder color
+            borderColor -= 10;  // Darken pixel border color
+            if (borderColor < 200) {borderColor = 180;}  // Clamp minimum border color
           }
         }
       }
@@ -252,7 +256,7 @@ void serialEvent(Serial myPort) {
       else {  // If true, it means we received '#' character and calculated NUM_LEDS.
         myPort.clear();       // Clear the serial port buffer to be ready for pixel data.
         serialCount = 0;      // Reset serial count before receiving more data.
-        pixelNumber = 0;      // This will make the "draw pixel boarders" check in draw() true.
+        pixelNumber = 0;      // This will make the "draw pixel borders" check in draw() true.
         if (NUM_LEDS != receivedNUM_LEDS) {  // Check if NUM_LEDS matches what the MCU is sending.
           if (checkNUM_LEDS == true) {
             println("**********************************************************************");
@@ -303,16 +307,16 @@ void serialEvent(Serial myPort) {
             println("    direction: [" + direction + "]everse");
           }
           
-          if (NUM_LEDS > (numberColumns * numberRows)) { 
+          if ((layout == "M") && (NUM_LEDS > (numberColumns * numberRows))) { 
             println("**********************************************************************");
-            println("  NUM_LEDS is greater then numberColumns * numberRows [ " + (numberColumns * numberRows) + " ]"); 
+            println("  NUM_LEDS is greater than numberColumns * numberRows [ " + (numberColumns * numberRows) + " ]"); 
             println("  Please check the values of these variables.  Processing halted.");
             println("**********************************************************************");
             exit();  // Exit the program.
           }
         }
 
-        delay(200);  // *Required short delay* to guarantee "draw pixel boarders" in draw() becomes true.
+        delay(200);  // *Required short delay* to guarantee "draw pixel borders" in draw() becomes true.
         firstContact = true;  // First contact info from the microcontroller finished!
         delay(100);
       }
@@ -349,8 +353,8 @@ void serialEvent(Serial myPort) {
         fill(redChan,greenChan,blueChan);        // Set fill color based on the RGB data we received.
 
         if (layout == "C") {  // Draw circular pixels.
-          dx = r * cos(radians(degrees));
-          dy = dir * r * sin(radians(degrees));
+          dx = radius * cos(radians(degrees));
+          dy = dir * radius * sin(radians(degrees));
           xpos = (float(stageW)/2.0)+dx;  // x postion from center stage.
           ypos = (float(stageH)/2.0)+dy;  // y postion from center stage.
           degrees = degrees - (360.0 / NUM_LEDS);  // Rotate to next position around the circle.
